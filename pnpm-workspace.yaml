@@ -1,0 +1,6 @@
+ignoredBuiltDependencies:
+  - '@whiskeysockets/baileys'
+  - better-sqlite3
+  - chromium
+  - protobufjs
+  - sharp

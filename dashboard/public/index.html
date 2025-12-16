@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netflix Code Bot - Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --netflix-red: #E50914;
+      --netflix-red-dark: #B81D24;
+      --netflix-black: #141414;
+      --netflix-dark: #1a1a1a;
+      --netflix-gray: #2a2a2a;
+      --netflix-light-gray: #808080;
+      --success-green: #46d369;
+      --error-red: #e87c03;
+      --processing-blue: #3b82f6;
+      --card-bg: rgba(42, 42, 42, 0.8);
+      --border-radius: 12px;
+      --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(135deg, var(--netflix-black) 0%, #1a0a0a 100%);
+      color: #fff;
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 32px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, var(--netflix-red), var(--netflix-red-dark));
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+
+    .logo h1 {
+      font-size: 24px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #fff, #ccc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .status-badges {
+      display: flex;
+      gap: 12px;
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: rgba(70, 211, 105, 0.1);
+      border: 1px solid rgba(70, 211, 105, 0.3);
+      border-radius: 24px;
+      font-size: 14px;
+      color: var(--success-green);
+      transition: all 0.3s ease;
+    }
+
+    .status-badge.disconnected {
+      background: rgba(232, 124, 3, 0.1);
+      border-color: rgba(232, 124, 3, 0.3);
+      color: var(--error-red);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      background: currentColor;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    .status-badge.disconnected .status-dot {
+      animation: none;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.5;
+      }
+    }
+
+    /* Processing Banner */
+    .processing-banner {
+      display: none;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 24px;
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.1));
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: var(--border-radius);
+      margin-bottom: 24px;
+      animation: slideIn 0.3s ease;
+    }
+
+    .processing-banner.active {
+      display: flex;
+    }
+
+    .processing-spinner {
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(59, 130, 246, 0.3);
+      border-top-color: var(--processing-blue);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 20px;
+      margin-bottom: 32px;
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: var(--border-radius);
+      padding: 24px;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow);
+    }
+
+    .stat-card.highlight {
+      background: linear-gradient(135deg, rgba(229, 9, 20, 0.2), rgba(184, 29, 36, 0.1));
+      border-color: rgba(229, 9, 20, 0.3);
+    }
+
+    .stat-label {
+      font-size: 13px;
+      color: var(--netflix-light-gray);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-size: 36px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .stat-value.success {
+      color: var(--success-green);
+    }
+
+    .stat-value.error {
+      color: var(--error-red);
+    }
+
+    .stat-subtitle {
+      font-size: 13px;
+      color: var(--netflix-light-gray);
+      margin-top: 4px;
+    }
+
+    /* Main Layout */
+    .main-layout {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 24px;
+    }
+
+    @media (max-width: 1024px) {
+      .main-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Logs Section */
+    .section {
+      background: var(--card-bg);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .filter-indicator {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 12px;
+      background: rgba(229, 9, 20, 0.2);
+      border-radius: 20px;
+      font-size: 13px;
+      color: var(--netflix-red);
+    }
+
+    .filter-indicator.active {
+      display: flex;
+    }
+
+    .filter-indicator button {
+      background: none;
+      border: none;
+      color: var(--netflix-red);
+      cursor: pointer;
+      font-size: 16px;
+      padding: 0;
+      margin-left: 4px;
+    }
+
+    .section-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .filter-btn {
+      padding: 6px 12px;
+      background: rgba(255, 255, 255, 0.1);
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    .filter-btn:hover,
+    .filter-btn.active {
+      background: var(--netflix-red);
+    }
+
+    /* Logs Table */
+    .logs-container {
+      max-height: 500px;
+      overflow-y: auto;
+    }
+
+    .logs-container::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .logs-container::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .logs-container::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 3px;
+    }
+
+    .log-item {
+      display: grid;
+      grid-template-columns: 1fr auto auto auto;
+      gap: 16px;
+      padding: 16px 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      align-items: center;
+      transition: background 0.2s ease;
+    }
+
+    .log-item:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .log-item.new {
+      animation: highlight 2s ease;
+    }
+
+    @keyframes highlight {
+      0% {
+        background: rgba(70, 211, 105, 0.3);
+      }
+
+      100% {
+        background: transparent;
+      }
+    }
+
+    .log-profile {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .profile-avatar {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--netflix-red), var(--netflix-red-dark));
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 16px;
+    }
+
+    .profile-info h4 {
+      font-weight: 500;
+      font-size: 15px;
+    }
+
+    .profile-info span {
+      font-size: 12px;
+      color: var(--netflix-light-gray);
+    }
+
+    .log-code {
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 18px;
+      font-weight: 600;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 6px 12px;
+      border-radius: 6px;
+      letter-spacing: 2px;
+    }
+
+    .log-status {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      text-transform: uppercase;
+    }
+
+    .log-status.sent {
+      background: rgba(70, 211, 105, 0.2);
+      color: var(--success-green);
+    }
+
+    .log-status.failed {
+      background: rgba(232, 124, 3, 0.2);
+      color: var(--error-red);
+    }
+
+    .log-status.pending {
+      background: rgba(59, 130, 246, 0.2);
+      color: var(--processing-blue);
+    }
+
+    .log-time {
+      font-size: 13px;
+      color: var(--netflix-light-gray);
+      text-align: right;
+      min-width: 100px;
+    }
+
+    /* Contacts Section */
+    .contacts-list {
+      padding: 8px 0;
+    }
+
+    .contact-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      transition: background 0.2s ease;
+      cursor: pointer;
+    }
+
+    .contact-item:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .contact-item.active {
+      background: rgba(229, 9, 20, 0.15);
+      border-left: 3px solid var(--netflix-red);
+    }
+
+    .contact-profile {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .contact-avatar {
+      width: 36px;
+      height: 36px;
+      background: var(--netflix-gray);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+
+    .contact-name {
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    .contact-phone {
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 13px;
+      color: var(--netflix-light-gray);
+    }
+
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--netflix-light-gray);
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    .empty-state h3 {
+      font-size: 16px;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+
+    .empty-state p {
+      font-size: 14px;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      padding: 24px;
+      color: var(--netflix-light-gray);
+      font-size: 13px;
+      margin-top: 32px;
+    }
+
+    /* Animations */
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .stat-card,
+    .section {
+      animation: fadeIn 0.5s ease;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <div class="logo-icon">📺</div>
+        <h1>Netflix Code Bot</h1>
+      </div>
+      <div class="status-badges">
+        <div class="status-badge disconnected" id="bot-status">
+          <div class="status-dot"></div>
+          <span>🤖 Bot</span>
+        </div>
+        <div class="status-badge disconnected" id="whatsapp-status">
+          <div class="status-dot"></div>
+          <span>📱 WhatsApp</span>
+        </div>
+        <div class="status-badge disconnected" id="gmail-status">
+          <div class="status-dot"></div>
+          <span>📧 Gmail</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Processing Banner -->
+    <div class="processing-banner" id="processing-banner">
+      <div class="processing-spinner"></div>
+      <span id="processing-text">Procesando...</span>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="stats-grid">
+      <div class="stat-card highlight">
+        <div class="stat-label">Total de Códigos</div>
+        <div class="stat-value" id="stat-total">0</div>
+        <div class="stat-subtitle">enviados en total</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Enviados Hoy</div>
+        <div class="stat-value success" id="stat-today">0</div>
+        <div class="stat-subtitle">códigos hoy</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Tasa de Éxito</div>
+        <div class="stat-value" id="stat-success-rate">100%</div>
+        <div class="stat-subtitle">mensajes entregados</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Perfiles Activos</div>
+        <div class="stat-value" id="stat-profiles">0</div>
+        <div class="stat-subtitle">contactos configurados</div>
+      </div>
+    </div>
+
+    <!-- Main Layout -->
+    <div class="main-layout">
+      <!-- Logs Section -->
+      <div class="section">
+        <div class="section-header">
+          <h2 class="section-title">📋 Historial de Códigos</h2>
+          <div class="filter-indicator" id="profile-filter-indicator">
+            <span>Filtrado: <strong id="filter-profile-name"></strong></span>
+            <button onclick="clearProfileFilter()">✕</button>
+          </div>
+          <div class="section-actions">
+            <button class="filter-btn active" data-filter="all">Todos</button>
+            <button class="filter-btn" data-filter="sent">Enviados</button>
+            <button class="filter-btn" data-filter="failed">Fallidos</button>
+          </div>
+        </div>
+        <div class="logs-container" id="logs-container">
+          <div class="empty-state">
+            <div class="empty-state-icon">📭</div>
+            <h3>Sin registros aún</h3>
+            <p>Los códigos de Netflix aparecerán aquí</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Contacts Section -->
+      <div class="section">
+        <div class="section-header">
+          <h2 class="section-title">📇 Contactos</h2>
+        </div>
+        <div class="contacts-list" id="contacts-list">
+          <div class="empty-state">
+            <div class="empty-state-icon">👥</div>
+            <h3>Sin contactos</h3>
+            <p>Configura los perfiles en contacts.json</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <p>Netflix Code Bot v1.0 • Hecho con ❤️ para automatizar tu vida</p>
+    </footer>
+  </div>
+
+  <script>
+    // Estado de la app
+    let currentFilter = 'all';
+    let profileFilter = null;
+    let ws = null;
+
+    // Conectar WebSocket
+    function connectWebSocket() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${protocol}//${window.location.host}`);
+
+      ws.onopen = () => {
+        console.log('WebSocket conectado');
+      };
+
+      ws.onmessage = (event) => {
+        const { type, data } = JSON.parse(event.data);
+
+        switch (type) {
+          case 'status':
+            updateStatusBadges(data);
+            break;
+          case 'newLog':
+            addNewLog(data);
+            loadStats();
+            break;
+          case 'processing':
+            showProcessing(data);
+            break;
+        }
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket desconectado, reconectando...');
+        updateStatusBadges({ whatsapp: 'disconnected', gmail: 'disconnected' });
+        setTimeout(connectWebSocket, 3000);
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+    }
+
+    // Actualizar badges de estado
+    function updateStatusBadges(status) {
+      const botBadge = document.getElementById('bot-status');
+      const whatsappBadge = document.getElementById('whatsapp-status');
+      const gmailBadge = document.getElementById('gmail-status');
+
+      // Badge del bot
+      if (status.botConnected) {
+        botBadge.classList.remove('disconnected');
+        botBadge.innerHTML = '<div class="status-dot"></div><span>🤖 Bot Activo</span>';
+      } else {
+        botBadge.classList.add('disconnected');
+        botBadge.innerHTML = '<div class="status-dot"></div><span>🤖 Bot Inactivo</span>';
+      }
+
+      if (status.whatsapp === 'connected') {
+        whatsappBadge.classList.remove('disconnected');
+        whatsappBadge.innerHTML = '<div class="status-dot"></div><span>📱 Conectado</span>';
+      } else {
+        whatsappBadge.classList.add('disconnected');
+        whatsappBadge.innerHTML = '<div class="status-dot"></div><span>📱 Desconectado</span>';
+      }
+
+      if (status.gmail === 'connected') {
+        gmailBadge.classList.remove('disconnected');
+        gmailBadge.innerHTML = '<div class="status-dot"></div><span>📧 Conectado</span>';
+      } else {
+        gmailBadge.classList.add('disconnected');
+        gmailBadge.innerHTML = '<div class="status-dot"></div><span>📧 Desconectado</span>';
+      }
+
+      // Ocultar procesamiento si no hay actividad
+      if (!status.processing) {
+        hideProcessing();
+      }
+    }
+
+    // Mostrar banner de procesamiento
+    function showProcessing(activity) {
+      const banner = document.getElementById('processing-banner');
+      const text = document.getElementById('processing-text');
+
+      if (activity) {
+        text.textContent = activity.message || 'Procesando...';
+        banner.classList.add('active');
+      } else {
+        hideProcessing();
+      }
+    }
+
+    // Ocultar banner de procesamiento
+    function hideProcessing() {
+      document.getElementById('processing-banner').classList.remove('active');
+    }
+
+    // Agregar nuevo log al inicio
+    function addNewLog(log) {
+      hideProcessing();
+
+      // Si hay filtro de perfil y no coincide, no mostrar
+      if (profileFilter && log.profile_name !== profileFilter) return;
+
+      // Si hay filtro de estado y no coincide, no mostrar
+      if (currentFilter !== 'all' && log.status !== currentFilter) return;
+
+      const container = document.getElementById('logs-container');
+
+      // Remover empty state si existe
+      const emptyState = container.querySelector('.empty-state');
+      if (emptyState) emptyState.remove();
+
+      // Crear nuevo elemento
+      const logHtml = `
+        <div class="log-item new">
+          <div class="log-profile">
+            <div class="profile-avatar">${getInitial(log.profile_name)}</div>
+            <div class="profile-info">
+              <h4>${log.profile_name}</h4>
+              <span>${log.phone_number}</span>
+            </div>
+          </div>
+          <div class="log-code">${log.code}</div>
+          <div class="log-status ${log.status}">${getStatusText(log.status)}</div>
+          <div class="log-time">Ahora</div>
+        </div>
+      `;
+
+      container.insertAdjacentHTML('afterbegin', logHtml);
+    }
+
+    // Formatear fecha
+    function formatTime(timestamp) {
+      const date = new Date(timestamp);
+      const now = new Date();
+      const diff = now - date;
+
+      if (diff < 60000) return 'Hace un momento';
+      if (diff < 3600000) return `Hace ${Math.floor(diff / 60000)} min`;
+      if (diff < 86400000) return `Hace ${Math.floor(diff / 3600000)} hrs`;
+
+      return date.toLocaleDateString('es-MX', {
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
+    // Obtener inicial del nombre
+    function getInitial(name) {
+      return name ? name.charAt(0).toUpperCase() : '?';
+    }
+
+    // Obtener texto de estado
+    function getStatusText(status) {
+      switch (status) {
+        case 'sent': return '✓ Enviado';
+        case 'failed': return '✗ Fallido';
+        case 'pending': return '⏳ Pendiente';
+        default: return status;
+      }
+    }
+
+    // Cargar estadísticas
+    async function loadStats() {
+      try {
+        const response = await fetch('/api/stats');
+        const stats = await response.json();
+
+        document.getElementById('stat-total').textContent = stats.total.codes || 0;
+        document.getElementById('stat-today').textContent = stats.today.sent || 0;
+        document.getElementById('stat-profiles').textContent = stats.byProfile.length || 0;
+
+        const successRate = stats.total.codes > 0
+          ? Math.round((stats.total.sent / stats.total.codes) * 100)
+          : 100;
+        document.getElementById('stat-success-rate').textContent = `${successRate}%`;
+      } catch (error) {
+        console.error('Error loading stats:', error);
+      }
+    }
+
+    // Cargar logs
+    async function loadLogs() {
+      try {
+        let url = '/api/logs';
+        if (profileFilter) {
+          url += `?profile=${encodeURIComponent(profileFilter)}`;
+        }
+
+        const response = await fetch(url);
+        const logs = await response.json();
+
+        const container = document.getElementById('logs-container');
+
+        const filteredLogs = currentFilter === 'all'
+          ? logs
+          : logs.filter(log => log.status === currentFilter);
+
+        if (filteredLogs.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">📭</div>
+              <h3>Sin registros</h3>
+              <p>Los códigos de Netflix aparecerán aquí</p>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = filteredLogs.map(log => `
+          <div class="log-item">
+            <div class="log-profile">
+              <div class="profile-avatar">${getInitial(log.profile_name)}</div>
+              <div class="profile-info">
+                <h4>${log.profile_name}</h4>
+                <span>${log.phone_number}</span>
+              </div>
+            </div>
+            <div class="log-code">${log.code}</div>
+            <div class="log-status ${log.status}">${getStatusText(log.status)}</div>
+            <div class="log-time">${formatTime(log.timestamp)}</div>
+          </div>
+        `).join('');
+      } catch (error) {
+        console.error('Error loading logs:', error);
+      }
+    }
+
+    // Cargar contactos
+    async function loadContacts() {
+      try {
+        const response = await fetch('/api/contacts');
+        const contacts = await response.json();
+
+        const container = document.getElementById('contacts-list');
+        const entries = Object.entries(contacts);
+
+        if (entries.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">👥</div>
+              <h3>Sin contactos</h3>
+              <p>Configura los perfiles en contacts.json</p>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = entries.map(([profile, phone]) => `
+          <div class="contact-item ${profileFilter === profile ? 'active' : ''}" data-profile="${profile}" onclick="toggleProfileFilter('${profile}')">
+            <div class="contact-profile">
+              <div class="contact-avatar">${getInitial(profile)}</div>
+              <span class="contact-name">${profile}</span>
+            </div>
+            <span class="contact-phone">+${phone}</span>
+          </div>
+        `).join('');
+      } catch (error) {
+        console.error('Error loading contacts:', error);
+      }
+    }
+
+    // Toggle filtro por perfil
+    function toggleProfileFilter(profile) {
+      if (profileFilter === profile) {
+        clearProfileFilter();
+      } else {
+        profileFilter = profile;
+        document.getElementById('filter-profile-name').textContent = profile;
+        document.getElementById('profile-filter-indicator').classList.add('active');
+        loadLogs();
+        loadContacts();
+      }
+    }
+
+    // Limpiar filtro de perfil
+    function clearProfileFilter() {
+      profileFilter = null;
+      document.getElementById('profile-filter-indicator').classList.remove('active');
+      loadLogs();
+      loadContacts();
+    }
+
+    // Event listeners para filtros
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentFilter = btn.dataset.filter;
+        loadLogs();
+      });
+    });
+
+    // Inicializar
+    connectWebSocket();
+    loadStats();
+    loadLogs();
+    loadContacts();
+
+    // Actualizar cada 30 segundos como fallback
+    setInterval(() => {
+      loadStats();
+    }, 30000);
+  </script>
+</body>
+
+</html>

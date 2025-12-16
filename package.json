@@ -1,0 +1,33 @@
+{
+  "name": "netflix-code-bot",
+  "version": "1.0.0",
+  "description": "Automatiza el envío de códigos de verificación de Netflix por WhatsApp",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dashboard": "node src/dashboard.js",
+    "dev": "node --watch src/index.js",
+    "setup": "node src/setup.js"
+  },
+  "keywords": [
+    "netflix",
+    "whatsapp",
+    "automation"
+  ],
+  "author": "Bryan Vargas",
+  "license": "MIT",
+  "dependencies": {
+    "baileys": "7.0.0-rc.9",
+    "better-sqlite3": "^12.5.0",
+    "chalk": "^5.6.2",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "imapflow": "^1.2.0",
+    "mailparser": "^3.9.1",
+    "pino": "^10.1.0",
+    "puppeteer-core": "^24.33.0",
+    "qrcode-terminal": "^0.12.0",
+    "ws": "^8.18.3"
+  }
+}

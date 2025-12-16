@@ -1,0 +1,22 @@
+# Netflix Code Bot
+
+node_modules/
+data/
+.env
+*.log
+contacts.json
+
+# WhatsApp auth session
+data/whatsapp-auth/
+
+# SQLite database
+*.db
+*.db-journal
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

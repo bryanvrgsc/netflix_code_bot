@@ -1,0 +1,14 @@
+{
+  "_comment": "Mapeo de perfiles de Netflix a números de WhatsApp",
+  "_instructions": "Agrega el nombre del perfil de Netflix exactamente como aparece en el correo y el número de WhatsApp con código de país (sin + ni espacios)",
+  "profiles": {
+    "Profile1": "xxxxxxxxxxx",
+    "Profile2": "xxxxxxxxxxx",
+    "Profile3": "xxxxxxxxxxx",
+    "Profile4": "xxxxxxxxxxx",
+    "Profile5": "xxxxxxxxxxx"
+  },
+  "_example_format": {
+    "Nombre del perfil Netflix": "Código de país + número (ej: 52 para México + 10 dígitos)"
+  }
+}
