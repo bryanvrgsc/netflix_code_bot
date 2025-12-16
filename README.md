@@ -124,7 +124,11 @@ pnpm start
 
 ### Opción 2: LaunchAgent (recomendado)
 
-Crea `~/Library/LaunchAgents/com.netflix-code-bot.plist`:
+> ⚠️ **Importante**: Antes de usar LaunchAgent, ejecuta `pnpm start` manualmente al menos una vez para escanear el código QR de WhatsApp.
+
+1. El proyecto incluye `start.sh` que se usa como punto de entrada.
+
+2. Crea `~/Library/LaunchAgents/com.netflix-code-bot.plist`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -135,8 +139,8 @@ Crea `~/Library/LaunchAgents/com.netflix-code-bot.plist`:
     <string>com.netflix-code-bot</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/node</string>
-        <string>/full/path/to/netflix-code-bot/src/index.js</string>
+        <string>/bin/bash</string>
+        <string>/full/path/to/netflix-code-bot/start.sh</string>
     </array>
     <key>WorkingDirectory</key>
     <string>/full/path/to/netflix-code-bot</string>
@@ -144,13 +148,42 @@ Crea `~/Library/LaunchAgents/com.netflix-code-bot.plist`:
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <key>StandardOutPath</key>
+    <string>/full/path/to/netflix-code-bot/data/bot.log</string>
+    <key>StandardErrorPath</key>
+    <string>/full/path/to/netflix-code-bot/data/bot-error.log</string>
 </dict>
 </plist>
 ```
 
-Carga el servicio:
+3. Carga el servicio:
 
 ```bash
+launchctl load ~/Library/LaunchAgents/com.netflix-code-bot.plist
+```
+
+4. Verificar estado:
+
+```bash
+launchctl list | grep netflix
+# Debería mostrar un PID (número) si está corriendo
+```
+
+5. Ver logs:
+
+```bash
+tail -f data/bot.log
+tail -f data/bot-error.log
+```
+
+6. Detener/Reiniciar:
+
+```bash
+# Detener
+launchctl unload ~/Library/LaunchAgents/com.netflix-code-bot.plist
+
+# Reiniciar
+launchctl unload ~/Library/LaunchAgents/com.netflix-code-bot.plist
 launchctl load ~/Library/LaunchAgents/com.netflix-code-bot.plist
 ```
 
