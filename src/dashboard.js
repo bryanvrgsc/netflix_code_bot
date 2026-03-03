@@ -47,10 +47,12 @@ function connectToBot() {
                 // Actualizar estado local
                 if (message.type === 'status') {
                     botStatus = { ...botStatus, ...message.data, botConnected: true };
+                    // Enviar el estado completo (con botConnected) al dashboard
+                    broadcastToDashboard('status', botStatus);
+                } else {
+                    // Reenviar otros tipos de mensajes tal cual
+                    broadcastToDashboard(message.type, message.data);
                 }
-
-                // Reenviar a todos los clientes del dashboard
-                broadcastToDashboard(message.type, message.data);
             } catch (e) {
                 console.error('Error parseando mensaje del bot:', e);
             }
