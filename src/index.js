@@ -10,6 +10,20 @@ import BrowserService from './services/browser.js';
 import { logCodeSent, isCodeProcessed, getStats } from './services/database.js';
 import { startBotStatusServer, updateBotStatus, notifyNewLog, notifyProcessing } from './services/botStatus.js';
 
+// Capturar errores no manejados para evitar que el bot muera por fallos de red
+process.on('uncaughtException', (err) => {
+    console.error(chalk.red('❌ Uncaught Exception:'), err.message);
+    if (err.message.includes('Connection not available') || err.message.includes('read ETIMEDOUT')) {
+        console.log(chalk.yellow('⚠️  Ignorando error de red para mantener el bot activo. Reintentará conectar.'));
+    } else {
+        process.exit(1);
+    }
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error(chalk.red('❌ Unhandled Rejection:'), reason);
+});
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -67,6 +81,9 @@ async function main() {
 
     const whatsapp = new WhatsAppService();
     const browser = new BrowserService();
+
+    // Iniciar servidor de estado del bot EARLY para que el dashboard pueda conectar mientras se espera el QR
+    startBotStatusServer();
 
     // Manejar códigos de Netflix detectados
     gmail.on('netflixCode', async (data) => {
@@ -142,6 +159,12 @@ async function main() {
         console.log(chalk.blue('\n🏠 ¡Solicitud de Hogar Netflix detectada!'));
         console.log(chalk.white(`   Perfil: ${chalk.bold(data.profile)}`));
         console.log(chalk.white(`   Mensaje: ${data.message}`));
+
+        // Verificar si ya procesamos esta solicitud de Hogar recientemente
+        if (isCodeProcessed('HOGAR', data.profile)) {
+            console.log(chalk.yellow('⚠️  Esta solicitud de Hogar ya fue procesada recientemente'));
+            return;
+        }
 
         // Buscar número de WhatsApp del perfil
         const phoneNumber = contacts[data.profile];
@@ -267,24 +290,57 @@ _Mensaje automático enviado por Netflix Code Bot_`;
         await gmail.reconnect();
     });
 
+    // Escuchar cambios de estado de WhatsApp en tiempo real
+    whatsapp.on('connected', () => {
+        updateBotStatus({ whatsapp: 'connected' });
+    });
+    whatsapp.on('disconnected', () => {
+        updateBotStatus({ whatsapp: 'disconnected' });
+    });
+
     // Conectar WhatsApp primero
     console.log(chalk.cyan('📱 Conectando a WhatsApp...'));
     try {
         await whatsapp.connect();
-        updateBotStatus({ whatsapp: 'connected' });
+        console.log(chalk.green('✅ WhatsApp conectado y listo'));
     } catch (error) {
-        console.error(chalk.red('❌ Error conectando WhatsApp:'), error.message);
-        console.log(chalk.yellow('Intenta nuevamente. Asegúrate de escanear el código QR.'));
-        process.exit(1);
+        console.error(chalk.red('❌ Error crítico en WhatsApp:'), error.message);
+        console.log(chalk.yellow('⚠️  El bot intentará reconectar automáticamente en segundo plano.'));
+        // No salimos aquí, dejamos que intente reconectar
     }
 
     // Conectar a Gmail
     console.log(chalk.cyan('\n📧 Conectando a Gmail...'));
-    await gmail.connect();
-    updateBotStatus({ gmail: 'connected' });
+    try {
+        await gmail.connect();
+        updateBotStatus({ gmail: 'connected' });
+        console.log(chalk.green('✅ Gmail conectado y listo'));
+    } catch (error) {
+        console.error(chalk.red('❌ Error conectando a Gmail:'), error.message);
+        console.log(chalk.yellow('⚠️  Gmail intentará reconectar automáticamente.'));
+    }
 
-    // Iniciar servidor de estado del bot (para comunicación con dashboard)
-    startBotStatusServer();
+    // Servidor de estado del bot ya iniciado arriba.
+
+    // Watchdog: Verificar estado cada 5 minutos
+    setInterval(() => {
+        const status = {
+            whatsapp: whatsapp.isConnected ? 'connected' : 'disconnected',
+            gmail: gmail.isConnected ? 'connected' : 'disconnected',
+            timestamp: new Date().toISOString()
+        };
+        updateBotStatus(status);
+
+        if (!whatsapp.isConnected) {
+            console.log(chalk.yellow('🕒 Watchdog: WhatsApp desconectado, reintentando...'));
+            whatsapp.connect().catch(() => { });
+        }
+
+        if (!gmail.isConnected) {
+            console.log(chalk.yellow('🕒 Watchdog: Gmail desconectado, reintentando...'));
+            gmail.connect().catch(() => { });
+        }
+    }, 300000); // 5 minutos
 
     // Mostrar estadísticas
     const stats = getStats();
