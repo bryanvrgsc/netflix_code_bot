@@ -48,9 +48,9 @@ export function logCodeSent({ profileName, code, phoneNumber, status = 'sent', e
     INSERT INTO logs (profile_name, code, phone_number, status, error_message, email_subject, email_from)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
-  
+
   const result = stmt.run(profileName, code, phoneNumber, status, errorMessage, emailSubject, emailFrom);
-  
+
   // Actualizar estadísticas
   const today = new Date().toISOString().split('T')[0];
   const statsStmt = db.prepare(`
@@ -60,11 +60,11 @@ export function logCodeSent({ profileName, code, phoneNumber, status = 'sent', e
       codes_sent = codes_sent + ?,
       codes_failed = codes_failed + ?
   `);
-  
+
   const sent = status === 'sent' ? 1 : 0;
   const failed = status === 'failed' ? 1 : 0;
   statsStmt.run(today, sent, failed, sent, failed);
-  
+
   return result.lastInsertRowid;
 }
 
@@ -104,24 +104,24 @@ export function getStats() {
       SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
     FROM logs
   `);
-  
+
   const todayStmt = db.prepare(`
     SELECT codes_sent, codes_failed
     FROM stats
     WHERE date = date('now')
   `);
-  
+
   const profilesStmt = db.prepare(`
     SELECT profile_name, COUNT(*) as count
     FROM logs
     GROUP BY profile_name
     ORDER BY count DESC
   `);
-  
+
   const total = totalStmt.get();
   const today = todayStmt.get() || { codes_sent: 0, codes_failed: 0 };
   const byProfile = profilesStmt.all();
-  
+
   return {
     total: {
       codes: total.total_codes,
@@ -151,8 +151,19 @@ export function getStatsHistory(days = 7) {
 
 /**
  * Verifica si un código ya fue procesado (evita duplicados)
+ * Para solicitudes de Hogar, verifica si cualquier HOGAR_* ya fue procesado
  */
 export function isCodeProcessed(code, profileName) {
+  if (code === 'HOGAR') {
+    // Para Hogar, verificar si ya hay cualquier entrada HOGAR_* para este perfil recientemente
+    const stmt = db.prepare(`
+      SELECT id FROM logs
+      WHERE code LIKE 'HOGAR%' AND profile_name = ?
+      AND timestamp > datetime('now', '-1 hour')
+    `);
+    return stmt.get(profileName) !== undefined;
+  }
+
   const stmt = db.prepare(`
     SELECT id FROM logs
     WHERE code = ? AND profile_name = ?
