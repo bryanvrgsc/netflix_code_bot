@@ -17,31 +17,51 @@ export class GmailService extends EventEmitter {
         };
         this.client = null;
         this.isConnected = false;
+        this.isReconnecting = false;
     }
 
     /**
      * Conectar a Gmail usando IMAP IDLE (muy eficiente, casi 0 CPU)
      */
     async connect() {
+        if (this.isConnected) return;
+
+        console.log('📧 Intentando conectar a Gmail...');
         this.client = new ImapFlow(this.config);
 
         this.client.on('error', (err) => {
             console.error('❌ Error de IMAP:', err.message);
+            this.isConnected = false;
             this.emit('error', err);
+            
+            // Intentar reconectar si no es un error fatal de autenticación
+            if (!err.message.toLowerCase().includes('authentication failed')) {
+                this.reconnect();
+            }
         });
 
         this.client.on('close', () => {
-            console.log('📧 Desconectado de Gmail');
-            this.isConnected = false;
-            this.emit('disconnected');
+            if (this.isConnected) {
+                console.log('📧 Desconectado de Gmail, reconectando...');
+                this.isConnected = false;
+                this.emit('disconnected');
+                this.reconnect();
+            }
         });
 
-        await this.client.connect();
-        console.log('📧 Conectado a Gmail');
-        this.isConnected = true;
+        try {
+            await this.client.connect();
+            console.log('📧 Conectado a Gmail');
+            this.isConnected = true;
 
-        // Iniciar escucha de nuevos correos
-        this.startListening();
+            // Iniciar escucha de nuevos correos
+            await this.startListening();
+        } catch (error) {
+            console.error('❌ Error conectando a Gmail:', error.message);
+            this.isConnected = false;
+            this.reconnect();
+            throw error;
+        }
     }
 
     /**
@@ -238,12 +258,21 @@ export class GmailService extends EventEmitter {
     }
 
     /**
-     * Reconectar
+     * Reconectar con delay
      */
     async reconnect() {
-        console.log('🔄 Intentando reconectar...');
-        await new Promise(r => setTimeout(r, 5000));
-        return this.connect();
+        if (this.isReconnecting) return;
+        this.isReconnecting = true;
+
+        console.log('🔄 Intentando reconectar Gmail en 10 segundos...');
+        await new Promise(r => setTimeout(r, 10000));
+        
+        this.isReconnecting = false;
+        try {
+            await this.connect();
+        } catch (e) {
+            // El error ya se maneja en connect()
+        }
     }
 
     /**

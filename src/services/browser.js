@@ -42,23 +42,43 @@ export class BrowserService {
     }
 
     /**
-     * Inicializar navegador
+     * Inicializar navegador (con detección de browser zombie)
      */
     async init() {
-        if (this.browser) return;
+        // Verificar si el browser existente sigue funcional
+        if (this.browser) {
+            try {
+                // isConnected() retorna false si el browser murió
+                if (!this.browser.isConnected()) {
+                    console.log('🌐 Browser zombie detectado, reinicializando...');
+                    this.browser = null;
+                } else {
+                    return; // Browser sigue vivo, reutilizar
+                }
+            } catch (e) {
+                console.log('🌐 Browser en estado inválido, reinicializando...');
+                this.browser = null;
+            }
+        }
 
         const chromePath = this.getChromePath();
-        console.log(`🌐 Usando navegador: ${chromePath}`);
+        console.log(`🌐 Lanzando nuevo navegador: ${chromePath}`);
 
         this.browser = await puppeteer.launch({
             executablePath: chromePath,
-            headless: true, // Cambiar a false para ver el navegador
+            headless: true,
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
                 '--disable-gpu'
             ]
+        });
+
+        // Limpiar referencia si el browser se desconecta inesperadamente
+        this.browser.on('disconnected', () => {
+            console.log('🌐 Browser se desconectó, será reinicializado en el próximo uso.');
+            this.browser = null;
         });
     }
 
@@ -70,7 +90,16 @@ export class BrowserService {
     async approveNetflixHogar(approveUrl) {
         await this.init();
 
-        const page = await this.browser.newPage();
+        let page;
+        try {
+            page = await this.browser.newPage();
+        } catch (error) {
+            // Si no podemos abrir página, el browser murió — resetear y reintentar
+            console.log('🌐 Error abriendo página, reinicializando browser...');
+            this.browser = null;
+            await this.init();
+            page = await this.browser.newPage();
+        }
 
         try {
             console.log('🌐 Abriendo enlace de aprobación de Netflix...');
@@ -87,36 +116,39 @@ export class BrowserService {
             // Esperar un momento para que cargue la página
             await delay(2000);
 
-            // Tomar screenshot para debug (opcional)
+            // Tomar screenshot para debug
             const screenshotPath = join(__dirname, '../../data/netflix-approval.png');
             await page.screenshot({ path: screenshotPath, fullPage: true });
             console.log(`📸 Screenshot guardado en: ${screenshotPath}`);
 
-            // Buscar y hacer clic en el botón de confirmación
-            // Netflix puede tener diferentes botones según el flujo
-            const confirmButtons = [
+            // Buscar y hacer clic en el botón/link de confirmación
+            // Netflix usa tanto <button> como <a> estilizados como botones
+            const confirmSelectors = [
+                // Selectores específicos de Netflix
                 'button[data-uia="set-primary-location-action"]',
+                'a[data-uia="set-primary-location-action"]',
                 'button[data-uia="confirm-btn"]',
-                'button:has-text("Confirmar")',
-                'button:has-text("Confirm")',
-                'button:has-text("Confirmar actualización")',
-                'button:has-text("Sí")',
-                'button:has-text("Yes")',
+                'a[data-uia="confirm-btn"]',
+                // Clases de botón comunes de Netflix
                 '.btn-blue',
                 '.btn-submit',
-                'button[type="submit"]'
+                'a.btn-blue',
+                'a.btn-submit',
+                // Genéricos
+                'button[type="submit"]',
+                'a[role="button"]',
             ];
 
             let clicked = false;
 
-            for (const selector of confirmButtons) {
+            for (const selector of confirmSelectors) {
                 try {
-                    const button = await page.$(selector);
-                    if (button) {
-                        const isVisible = await button.isIntersectingViewport();
+                    const element = await page.$(selector);
+                    if (element) {
+                        const isVisible = await element.isIntersectingViewport();
                         if (isVisible) {
-                            await button.click();
-                            console.log(`✅ Clic en botón: ${selector}`);
+                            await element.click();
+                            console.log(`✅ Clic en elemento: ${selector}`);
                             clicked = true;
                             break;
                         }
@@ -126,22 +158,24 @@ export class BrowserService {
                 }
             }
 
-            // Si no encontramos botón específico, buscar por texto
+            // Si no encontramos por selector, buscar <button> Y <a> por texto
             if (!clicked) {
                 try {
-                    // Buscar cualquier botón que contenga texto de confirmación
-                    const buttons = await page.$$('button');
-                    for (const button of buttons) {
-                        const text = await page.evaluate(el => el.textContent, button);
-                        if (text && /confirm|confirmar|actualiza|sí|yes/i.test(text)) {
-                            await button.click();
-                            console.log(`✅ Clic en botón con texto: "${text.trim()}"`);
-                            clicked = true;
-                            break;
+                    const clickableElements = await page.$$('button, a');
+                    for (const el of clickableElements) {
+                        const text = await page.evaluate(e => e.textContent, el);
+                        if (text && /confirm|confirmar|actualiza|sí,?\s*la\s*envié|yes/i.test(text)) {
+                            const isVisible = await el.isIntersectingViewport().catch(() => true);
+                            if (isVisible) {
+                                await el.click();
+                                console.log(`✅ Clic en elemento con texto: "${text.trim().substring(0, 50)}"`);
+                                clicked = true;
+                                break;
+                            }
                         }
                     }
                 } catch (e) {
-                    console.log('⚠️ Error buscando botones por texto:', e.message);
+                    console.log('⚠️ Error buscando elementos por texto:', e.message);
                 }
             }
 
@@ -154,13 +188,13 @@ export class BrowserService {
 
             // Verificar si la página muestra éxito
             const pageContent = await page.content();
-            const success = /gracias|thank|completado|completed|éxito|success|actualizado|updated/i.test(pageContent);
+            const success = /gracias|thank|completado|completed|éxito|success|actualizado|updated|reanudarse|confirmado/i.test(pageContent);
 
             await page.close();
 
             return {
                 success: clicked || success,
-                message: clicked ? 'Solicitud de Hogar aprobada automáticamente' : 'Página abierta pero no se encontró botón de confirmación',
+                message: clicked ? 'Solicitud de Hogar aprobada automáticamente' : (success ? 'Página indica éxito' : 'No se encontró botón de confirmación'),
                 screenshotPath: finalScreenshotPath
             };
 
@@ -173,12 +207,18 @@ export class BrowserService {
                 await page.screenshot({ path: errorScreenshotPath, fullPage: true });
             } catch (e) { }
 
-            await page.close();
+            try { await page.close(); } catch (e) { }
+
+            // Si es error de conexión, resetear browser para el próximo intento
+            if (error.message.includes('Connection closed') || error.message.includes('Protocol error') || error.message.includes('Target closed')) {
+                console.log('🌐 Reseteando browser por error de conexión...');
+                this.browser = null;
+            }
 
             return {
                 success: false,
                 message: `Error: ${error.message}`,
-                error: error
+                screenshotPath: join(__dirname, '../../data/netflix-error.png')
             };
         }
     }
@@ -188,7 +228,9 @@ export class BrowserService {
      */
     async close() {
         if (this.browser) {
-            await this.browser.close();
+            try {
+                await this.browser.close();
+            } catch (e) { }
             this.browser = null;
         }
     }

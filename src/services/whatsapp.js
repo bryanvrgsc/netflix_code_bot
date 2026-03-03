@@ -1,8 +1,9 @@
-import { default as makeWASocket, DisconnectReason, useMultiFileAuthState } from 'baileys';
+import { default as makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion } from 'baileys';
 import pino from 'pino';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
+import { EventEmitter } from 'events';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -11,8 +12,9 @@ const authDir = join(__dirname, '../../data/whatsapp-auth');
 // Logger silencioso para que no llene la consola
 const logger = pino({ level: 'silent' });
 
-export class WhatsAppService {
+export class WhatsAppService extends EventEmitter {
     constructor() {
+        super();
         this.socket = null;
         this.isConnected = false;
     }
@@ -21,26 +23,40 @@ export class WhatsAppService {
      * Conectar a WhatsApp
      */
     async connect() {
-        return new Promise(async (resolve, reject) => {
-            // Asegurar que existe el directorio de auth
-            if (!fs.existsSync(authDir)) {
-                fs.mkdirSync(authDir, { recursive: true });
-            }
+        if (this.isConnected) return;
 
-            const { state, saveCreds } = await useMultiFileAuthState(authDir);
+        // Asegurar que existe el directorio de auth
+        if (!fs.existsSync(authDir)) {
+            fs.mkdirSync(authDir, { recursive: true });
+        }
+
+        const { state, saveCreds } = await useMultiFileAuthState(authDir);
+
+        // Obtener la versión más reciente de WhatsApp Web para evitar error 405
+        const { version } = await fetchLatestBaileysVersion();
+        console.log(`📱 Usando versión de WhatsApp Web: ${version.join('.')}`);
+
+        return new Promise((resolve, reject) => {
+            console.log('📱 Iniciando conexión con WhatsApp...');
 
             const socket = makeWASocket({
                 auth: state,
+                version,
                 logger,
-                browser: ['Netflix Code Bot', 'Chrome', '120.0.0']
+                browser: ['Mac OS', 'Safari', '10.15.7'],
+                printQRInTerminal: false, // Lo manejamos nosotros
+                connectTimeoutMs: 60000,
+                defaultQueryTimeoutMs: 0,
+                keepAliveIntervalMs: 10000,
+                emitOwnEvents: true
             });
 
             this.socket = socket;
 
-            // Timeout para escaneo de QR
-            const timeout = setTimeout(() => {
-                if (!this.isConnected) {
-                    reject(new Error('Timeout: No se escaneó el código QR a tiempo (2 minutos)'));
+            // Timeout para escaneo de QR (solo la primera vez)
+            let qrTimeout = setTimeout(() => {
+                if (!this.isConnected && !this.isReconnecting) {
+                    console.log('⚠️ Timeout esperando escaneo de QR');
                 }
             }, 120000);
 
@@ -60,32 +76,45 @@ export class WhatsAppService {
                 }
 
                 if (connection === 'close') {
-                    clearTimeout(timeout);
+                    clearTimeout(qrTimeout);
+                    this.isConnected = false;
+                    this.emit('disconnected');
+
                     const statusCode = lastDisconnect?.error?.output?.statusCode;
+                    const errorReason = lastDisconnect?.error?.message || 'Error desconocido';
+
+                    console.log(`❌ WhatsApp desconectado: ${errorReason} (Status: ${statusCode})`);
+
                     const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-                    console.log('❌ WhatsApp desconectado:', lastDisconnect?.error?.message || 'Error desconocido');
-
                     if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
-                        console.log('👋 Sesión expirada. Limpiando credenciales...');
+                        console.log('👋 Sesión cerrada o expirada. Limpiando credenciales...');
                         if (fs.existsSync(authDir)) {
-                            fs.rmSync(authDir, { recursive: true });
+                            try {
+                                fs.rmSync(authDir, { recursive: true, force: true });
+                            } catch (e) {
+                                console.error('Error eliminando sesión:', e.message);
+                            }
                         }
                     }
 
                     if (shouldReconnect) {
-                        console.log('🔄 Reconectando en 3 segundos...');
-                        await new Promise(r => setTimeout(r, 3000));
-                        this.connect().then(resolve).catch(reject);
+                        console.log('🔄 Reconectando en 5 segundos...');
+                        setTimeout(() => {
+                            this.connect().catch(err => {
+                                console.error('Error en intento de reconexión:', err.message);
+                            });
+                        }, 5000);
                     } else {
-                        reject(new Error('Sesión de WhatsApp cerrada'));
+                        reject(new Error('Sesión de WhatsApp cerrada permanentemente'));
                     }
                 }
 
                 if (connection === 'open') {
-                    clearTimeout(timeout);
+                    clearTimeout(qrTimeout);
                     this.isConnected = true;
                     console.log('✅ WhatsApp conectado exitosamente');
+                    this.emit('connected');
                     resolve();
                 }
             });
@@ -139,7 +168,6 @@ _Mensaje automático enviado por Netflix Code Bot_`;
         }
 
         const jid = `${phoneNumber}@s.whatsapp.net`;
-        const fs = await import('fs');
 
         try {
             const imageBuffer = fs.readFileSync(imagePath);
