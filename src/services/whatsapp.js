@@ -17,13 +17,15 @@ export class WhatsAppService extends EventEmitter {
         super();
         this.socket = null;
         this.isConnected = false;
+        this.isConnecting = false;
     }
 
     /**
      * Conectar a WhatsApp
      */
     async connect() {
-        if (this.isConnected) return;
+        if (this.isConnected || this.isConnecting) return;
+        this.isConnecting = true;
 
         // Asegurar que existe el directorio de auth
         if (!fs.existsSync(authDir)) {
@@ -78,6 +80,7 @@ export class WhatsAppService extends EventEmitter {
                 if (connection === 'close') {
                     clearTimeout(qrTimeout);
                     this.isConnected = false;
+                    this.isConnecting = false;
                     this.emit('disconnected');
 
                     const statusCode = lastDisconnect?.error?.output?.statusCode;
@@ -113,6 +116,7 @@ export class WhatsAppService extends EventEmitter {
                 if (connection === 'open') {
                     clearTimeout(qrTimeout);
                     this.isConnected = true;
+                    this.isConnecting = false;
                     console.log('✅ WhatsApp conectado exitosamente');
                     this.emit('connected');
                     resolve();

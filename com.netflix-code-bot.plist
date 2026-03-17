@@ -6,7 +6,7 @@
     <string>com.netflix-code-bot</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/bryanvargas/Developer/netflix-code-bot/run_all.sh</string>
+        <string>/Users/bryanvargas/Developer/netflix-code-bot/start.sh</string>
     </array>
     <key>RunAtLoad</key>
     <true/>

@@ -18,50 +18,97 @@ export class GmailService extends EventEmitter {
         this.client = null;
         this.isConnected = false;
         this.isReconnecting = false;
+        this.isConnecting = false;
+        this._isDisconnecting = false;
+
+        // Exponential backoff state
+        this._reconnectAttempts = 0;
+        this._baseReconnectDelay = 30000;  // 30s initial
+        this._maxReconnectDelay = 300000;  // 5min max
+
+        // Heartbeat
+        this._heartbeatInterval = null;
+        this._heartbeatFrequency = 240000; // 4 minutes
     }
 
     /**
      * Conectar a Gmail usando IMAP IDLE (muy eficiente, casi 0 CPU)
      */
     async connect() {
-        if (this.isConnected) return;
+        if (this.isConnected || this.isConnecting) return;
+        this.isConnecting = true;
 
-        console.log('📧 Intentando conectar a Gmail...');
+        // Limpiar cliente anterior si existe
+        await this._destroyClient();
+
+        console.log(`📧 Intentando conectar a Gmail (${this.config.auth.user})...`);
         this.client = new ImapFlow(this.config);
 
         this.client.on('error', (err) => {
-            console.error('❌ Error de IMAP:', err.message);
-            this.isConnected = false;
-            this.emit('error', err);
-            
-            // Intentar reconectar si no es un error fatal de autenticación
-            if (!err.message.toLowerCase().includes('authentication failed')) {
-                this.reconnect();
+            if (err.authenticationFailed) {
+                console.error('❌ ERROR CRÍTICO DE AUTENTICACIÓN: Usuario o contraseña de aplicación incorrectos.');
+                console.log('   Revisa que IMAP esté habilitado en Gmail y que la contraseña de aplicación sea correcta.');
+                this.isConnected = false;
+                this.isConnecting = false;
+                this.emit('error', err);
+                return; // No reintentar automáticamente si es error de auth
             }
+
+            console.error('❌ Error de IMAP:', err.message);
+            this._handleDisconnect('error');
         });
 
         this.client.on('close', () => {
-            if (this.isConnected) {
-                console.log('📧 Desconectado de Gmail, reconectando...');
-                this.isConnected = false;
-                this.emit('disconnected');
-                this.reconnect();
+            if (this.isConnected || this.isConnecting) {
+                console.log('📧 Desconectado de Gmail');
+                this._handleDisconnect('close');
             }
         });
 
         try {
             await this.client.connect();
-            console.log('📧 Conectado a Gmail');
+            console.log('✅ Gmail conectado satisfactoriamente');
             this.isConnected = true;
+            this.isConnecting = false;
+
+            // Reset backoff on successful connection
+            this._reconnectAttempts = 0;
 
             // Iniciar escucha de nuevos correos
             await this.startListening();
         } catch (error) {
+            if (error.authenticationFailed) {
+                console.error('❌ Error de autenticación en connect():', error.message);
+                this.isConnected = false;
+                this.isConnecting = false;
+                throw error;
+            }
             console.error('❌ Error conectando a Gmail:', error.message);
             this.isConnected = false;
+            this.isConnecting = false;
             this.reconnect();
             throw error;
         }
+    }
+
+    /**
+     * Manejo centralizado de desconexión (evita race conditions entre error/close)
+     */
+    _handleDisconnect(source) {
+        if (this._isDisconnecting) return;
+        this._isDisconnecting = true;
+
+        console.log(`📧 Desconexión detectada (${source}), preparando reconexión...`);
+        this._stopHeartbeat();
+        this.isConnected = false;
+        this.isConnecting = false;
+        this.emit('disconnected');
+
+        // Dar tiempo a que el otro evento (error/close) se ignore
+        setTimeout(() => {
+            this._isDisconnecting = false;
+            this.reconnect();
+        }, 100);
     }
 
     /**
@@ -79,8 +126,8 @@ export class GmailService extends EventEmitter {
                 await this.checkForNetflixEmails();
             });
 
-            // Mantener conexión con IDLE
-            this.keepAlive();
+            // Iniciar heartbeat para detectar conexiones muertas
+            this._startHeartbeat();
 
         } catch (error) {
             console.error('Error abriendo INBOX:', error.message);
@@ -89,11 +136,29 @@ export class GmailService extends EventEmitter {
     }
 
     /**
-     * Mantener conexión activa
+     * Heartbeat: envía NOOP cada 4 minutos para detectar conexiones muertas
      */
-    async keepAlive() {
-        // ImapFlow maneja IDLE automáticamente
-        // Solo necesitamos mantener la conexión
+    _startHeartbeat() {
+        this._stopHeartbeat();
+        this._heartbeatInterval = setInterval(async () => {
+            if (!this.isConnected || !this.client) return;
+            try {
+                await this.client.noop();
+            } catch (error) {
+                console.error('💓 Heartbeat falló:', error.message);
+                this._handleDisconnect('heartbeat');
+            }
+        }, this._heartbeatFrequency);
+    }
+
+    /**
+     * Detener heartbeat
+     */
+    _stopHeartbeat() {
+        if (this._heartbeatInterval) {
+            clearInterval(this._heartbeatInterval);
+            this._heartbeatInterval = null;
+        }
     }
 
     /**
@@ -183,7 +248,7 @@ export class GmailService extends EventEmitter {
         const urlPatterns = [
             /<a[^>]+href=["']([^"']+)["'][^>]*>[^<]*(?:sí|si|yes)[^<]*(?:envié|envie|sent)[^<]*<\/a>/gi,
             /https:\/\/[^"'\s]+netflix[^"'\s]*(?:update|confirm|approve|verify)[^"'\s]*/gi,
-            /<a[^>]+href=["'](https:\/\/[^"']*netflix[^"']*(?:confirm|update|approve|verify)[^"']*)["']/gi,
+            /<a[^>]+href=["'](https:\/\/[^"']*netflix[^"']*(?:confirm|update|approve|verify)[^"']*)['"]/gi,
         ];
 
         let profile = null;
@@ -258,30 +323,67 @@ export class GmailService extends EventEmitter {
     }
 
     /**
-     * Reconectar con delay
+     * Reconectar con exponential backoff (30s → 60s → 120s → ... → max 5min)
      */
     async reconnect() {
-        if (this.isReconnecting) return;
+        if (this.isReconnecting || this.isConnected) return;
         this.isReconnecting = true;
 
-        console.log('🔄 Intentando reconectar Gmail en 10 segundos...');
-        await new Promise(r => setTimeout(r, 10000));
+        this._reconnectAttempts++;
+        const delay = Math.min(
+            this._baseReconnectDelay * Math.pow(2, this._reconnectAttempts - 1),
+            this._maxReconnectDelay
+        );
+        const delaySec = Math.round(delay / 1000);
+
+        console.log(`🔄 Reconectando Gmail en ${delaySec}s (intento #${this._reconnectAttempts})...`);
+        await new Promise(r => setTimeout(r, delay));
         
         this.isReconnecting = false;
         try {
             await this.connect();
         } catch (e) {
-            // El error ya se maneja en connect()
+            // El error ya se maneja dentro de connect()
         }
     }
 
     /**
-     * Cerrar conexión
+     * Destruir cliente IMAP anterior de forma segura
+     */
+    async _destroyClient() {
+        this._stopHeartbeat();
+
+        if (this.client) {
+            const oldClient = this.client;
+            this.client = null;
+
+            // Remover listeners para evitar reconexiones fantasma
+            oldClient.removeAllListeners();
+
+            try {
+                if (oldClient.usable) {
+                    await oldClient.logout();
+                }
+            } catch (e) {
+                // Ignorar errores al cerrar cliente viejo
+            }
+
+            try {
+                oldClient.close();
+            } catch (e) {
+                // Ignorar
+            }
+        }
+    }
+
+    /**
+     * Cerrar conexión limpiamente
      */
     async disconnect() {
-        if (this.client) {
-            await this.client.logout();
-        }
+        this._stopHeartbeat();
+        this.isConnected = false;
+        this.isConnecting = false;
+        await this._destroyClient();
     }
 }
 

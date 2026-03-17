@@ -281,13 +281,13 @@ _Mensaje automático enviado por Netflix Code Bot_`;
     gmail.on('error', async (error) => {
         console.error(chalk.red('❌ Error de Gmail:'), error.message);
         updateBotStatus({ gmail: 'disconnected' });
-        await gmail.reconnect();
+        // La reconexión se maneja internamente en GmailService._handleDisconnect
     });
 
     gmail.on('disconnected', async () => {
-        console.log(chalk.yellow('⚠️  Gmail desconectado, reconectando...'));
+        console.log(chalk.yellow('⚠️  Gmail desconectado'));
         updateBotStatus({ gmail: 'disconnected' });
-        await gmail.reconnect();
+        // La reconexión se maneja internamente en GmailService._handleDisconnect
     });
 
     // Escuchar cambios de estado de WhatsApp en tiempo real
@@ -357,7 +357,8 @@ _Mensaje automático enviado por Netflix Code Bot_`;
 
     console.log(chalk.green('\n✨ Bot iniciado correctamente'));
     console.log(chalk.gray('   Esperando correos de Netflix...\n'));
-    console.log(chalk.gray(`   Dashboard: http://localhost:${process.env.DASHBOARD_PORT || 3000}`));
+    console.log(chalk.gray('   Dashboard (opcional): pnpm run dashboard'));
+    console.log(chalk.gray(`   URL: http://localhost:${process.env.DASHBOARD_PORT || 3000}`));
     console.log(chalk.gray('   Presiona Ctrl+C para detener\n'));
 
     // Manejar cierre graceful
