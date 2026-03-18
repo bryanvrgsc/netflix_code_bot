@@ -103,6 +103,9 @@ export class WhatsAppService extends EventEmitter {
 
                     if (shouldReconnect) {
                         console.log('🔄 Reconectando en 5 segundos...');
+                        // Resolver el Promise original para no bloquear main()
+                        // La reconexión continuará en segundo plano
+                        resolve();
                         setTimeout(() => {
                             this.connect().catch(err => {
                                 console.error('Error en intento de reconexión:', err.message);
