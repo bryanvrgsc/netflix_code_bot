@@ -104,7 +104,7 @@ async function main() {
     gmail.on('netflixCode', async (data) => {
         console.log(chalk.green('\n🎬 ¡Código de Netflix detectado!'));
         console.log(chalk.white(`   Perfil: ${chalk.bold(data.profile)}`));
-        console.log(chalk.white(`   Código: ${chalk.bold(data.code)}`));
+        console.log(chalk.white(`   Código: ${chalk.bold('*'.repeat(data.code.length))}`));
 
         // Verificar si ya procesamos este código
         if (isCodeProcessed(data.code, data.profile)) {

@@ -302,7 +302,7 @@ export class GmailService extends EventEmitter {
         // Debug
         console.log(`   📋 Debug - Asunto: "${subject}"`);
         console.log(`   📋 Debug - Perfil: ${profile || 'NO DETECTADO'}`);
-        console.log(`   📋 Debug - Código: ${code || 'SIN CÓDIGO'}`);
+        console.log(`   📋 Debug - Código: ${code ? '*'.repeat(code.length) : 'SIN CÓDIGO'}`);
         console.log(`   📋 Debug - URL: ${approveUrl ? 'ENCONTRADA' : 'NO'}`);
 
         // Retornar datos según tipo
