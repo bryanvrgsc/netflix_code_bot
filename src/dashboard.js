@@ -224,12 +224,24 @@ app.get('/api/contacts', (req, res) => {
 
 // API: Actualizar contactos
 app.post('/api/contacts', (req, res) => {
+    const profiles = req.body;
+
+    if (!profiles || typeof profiles !== 'object' || Array.isArray(profiles)) {
+        return res.status(400).json({ error: 'El body debe ser un objeto con perfiles' });
+    }
+
+    for (const [name, phone] of Object.entries(profiles)) {
+        if (typeof name !== 'string' || name.trim() === '') {
+            return res.status(400).json({ error: 'El nombre de perfil no puede estar vacío' });
+        }
+        if (typeof phone !== 'string' || !/^\d{10,15}$/.test(phone)) {
+            return res.status(400).json({ error: `Teléfono inválido para "${name}": debe contener solo dígitos con código de país (10-15 dígitos)` });
+        }
+    }
+
     try {
         const contactsPath = join(__dirname, '../contacts.json');
-        const newContacts = {
-            profiles: req.body
-        };
-        fs.writeFileSync(contactsPath, JSON.stringify(newContacts, null, 2));
+        fs.writeFileSync(contactsPath, JSON.stringify({ profiles }, null, 2));
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: 'Error guardando contactos' });
