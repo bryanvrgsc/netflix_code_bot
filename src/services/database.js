@@ -32,13 +32,19 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     date DATE UNIQUE DEFAULT (date('now')),
     codes_sent INTEGER DEFAULT 0,
-    codes_failed INTEGER DEFAULT 0
+    codes_failed INTEGER DEFAULT 0,
+    codes_pending INTEGER DEFAULT 0
   );
 
   CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp);
   CREATE INDEX IF NOT EXISTS idx_logs_profile ON logs(profile_name);
   CREATE INDEX IF NOT EXISTS idx_logs_status ON logs(status);
 `);
+
+// Migración: agregar codes_pending si la tabla ya existía sin esa columna
+try {
+  db.exec(`ALTER TABLE stats ADD COLUMN codes_pending INTEGER DEFAULT 0`);
+} catch (e) { /* columna ya existe */ }
 
 /**
  * Registra un nuevo código enviado
@@ -54,16 +60,18 @@ export function logCodeSent({ profileName, code, phoneNumber, status = 'sent', e
   // Actualizar estadísticas
   const today = new Date().toISOString().split('T')[0];
   const statsStmt = db.prepare(`
-    INSERT INTO stats (date, codes_sent, codes_failed)
-    VALUES (?, ?, ?)
+    INSERT INTO stats (date, codes_sent, codes_failed, codes_pending)
+    VALUES (?, ?, ?, ?)
     ON CONFLICT(date) DO UPDATE SET
       codes_sent = codes_sent + ?,
-      codes_failed = codes_failed + ?
+      codes_failed = codes_failed + ?,
+      codes_pending = codes_pending + ?
   `);
 
   const sent = status === 'sent' ? 1 : 0;
   const failed = status === 'failed' ? 1 : 0;
-  statsStmt.run(today, sent, failed, sent, failed);
+  const pending = status === 'pending' ? 1 : 0;
+  statsStmt.run(today, sent, failed, pending, sent, failed, pending);
 
   return result.lastInsertRowid;
 }
@@ -98,15 +106,16 @@ export function getLogsByProfile(profileName, limit = 50) {
  */
 export function getStats() {
   const totalStmt = db.prepare(`
-    SELECT 
+    SELECT
       COUNT(*) as total_codes,
       SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as sent,
-      SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
+      SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
+      SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending
     FROM logs
   `);
 
   const todayStmt = db.prepare(`
-    SELECT codes_sent, codes_failed
+    SELECT codes_sent, codes_failed, codes_pending
     FROM stats
     WHERE date = date('now')
   `);
@@ -119,18 +128,20 @@ export function getStats() {
   `);
 
   const total = totalStmt.get();
-  const today = todayStmt.get() || { codes_sent: 0, codes_failed: 0 };
+  const today = todayStmt.get() || { codes_sent: 0, codes_failed: 0, codes_pending: 0 };
   const byProfile = profilesStmt.all();
 
   return {
     total: {
       codes: total.total_codes,
       sent: total.sent,
-      failed: total.failed
+      failed: total.failed,
+      pending: total.pending
     },
     today: {
       sent: today.codes_sent,
-      failed: today.codes_failed
+      failed: today.codes_failed,
+      pending: today.codes_pending
     },
     byProfile
   };
@@ -141,7 +152,7 @@ export function getStats() {
  */
 export function getStatsHistory(days = 7) {
   const stmt = db.prepare(`
-    SELECT date, codes_sent, codes_failed
+    SELECT date, codes_sent, codes_failed, codes_pending
     FROM stats
     WHERE date >= date('now', '-' || ? || ' days')
     ORDER BY date DESC
