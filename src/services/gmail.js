@@ -284,6 +284,21 @@ export class GmailService extends EventEmitter {
                     break;
                 }
             }
+
+            // Fallback: strip HTML y buscar número aislado de 4-8 dígitos
+            if (!code && html) {
+                const plainFromHtml = html
+                    .replace(/<[^>]+>/g, ' ')
+                    .replace(/&[a-z]+;/gi, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                const isolated = plainFromHtml.match(/(?<!\d)(\d{4,8})(?!\d)/g);
+                if (isolated) {
+                    // Descartar años y números de más de 6 dígitos no numéricos de Netflix
+                    const candidate = isolated.find(n => !/^(19|20)\d{2}$/.test(n));
+                    if (candidate) code = candidate;
+                }
+            }
         }
 
         // Buscar URL de aprobación
