@@ -18,6 +18,7 @@ export class WhatsAppService extends EventEmitter {
         this.socket = null;
         this.isConnected = false;
         this.isConnecting = false;
+        this.isReconnecting = false;
     }
 
     /**
@@ -103,10 +104,12 @@ export class WhatsAppService extends EventEmitter {
 
                     if (shouldReconnect) {
                         console.log('🔄 Reconectando en 5 segundos...');
+                        this.isReconnecting = true;
                         // Resolver el Promise original para no bloquear main()
                         // La reconexión continuará en segundo plano
                         resolve();
                         setTimeout(() => {
+                            this.isReconnecting = false;
                             this.connect().catch(err => {
                                 console.error('Error en intento de reconexión:', err.message);
                             });
