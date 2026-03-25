@@ -19,6 +19,11 @@ export class WhatsAppService extends EventEmitter {
         this.isConnected = false;
         this.isConnecting = false;
         this.isReconnecting = false;
+
+        // Exponential backoff state
+        this._reconnectAttempts = 0;
+        this._baseReconnectDelay = 5000;   // 5s inicial
+        this._maxReconnectDelay = 300000;  // 5min máximo
     }
 
     /**
@@ -103,7 +108,13 @@ export class WhatsAppService extends EventEmitter {
                     }
 
                     if (shouldReconnect) {
-                        console.log('🔄 Reconectando en 5 segundos...');
+                        this._reconnectAttempts++;
+                        const delay = Math.min(
+                            this._baseReconnectDelay * Math.pow(2, this._reconnectAttempts - 1),
+                            this._maxReconnectDelay
+                        );
+                        const delaySec = Math.round(delay / 1000);
+                        console.log(`🔄 Reconectando WhatsApp en ${delaySec}s (intento #${this._reconnectAttempts})...`);
                         this.isReconnecting = true;
                         // Resolver el Promise original para no bloquear main()
                         // La reconexión continuará en segundo plano
@@ -113,7 +124,7 @@ export class WhatsAppService extends EventEmitter {
                             this.connect().catch(err => {
                                 console.error('Error en intento de reconexión:', err.message);
                             });
-                        }, 5000);
+                        }, delay);
                     } else {
                         reject(new Error('Sesión de WhatsApp cerrada permanentemente'));
                     }
@@ -123,6 +134,8 @@ export class WhatsAppService extends EventEmitter {
                     clearTimeout(qrTimeout);
                     this.isConnected = true;
                     this.isConnecting = false;
+                    this.isReconnecting = false;
+                    this._reconnectAttempts = 0;
                     console.log('✅ WhatsApp conectado exitosamente');
                     this.emit('connected');
                     resolve();
