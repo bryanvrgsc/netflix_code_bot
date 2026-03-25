@@ -5,6 +5,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { getRecentLogs, getStats, getStatsHistory, getLogsByProfile } from './services/database.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -16,6 +17,66 @@ const wss = new WebSocketServer({ server });
 
 const DASHBOARD_PORT = process.env.DASHBOARD_PORT || 3000;
 const BOT_WS_URL = 'ws://localhost:3001';
+const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD;
+
+// Token HMAC determinístico — sobrevive reinicios sin necesitar estado en memoria
+function makeToken(password) {
+    return crypto.createHmac('sha256', 'netflix-bot-dashboard').update(password).digest('hex');
+}
+
+function parseCookies(cookieHeader = '') {
+    return Object.fromEntries(
+        cookieHeader.split(';').map(c => c.trim().split('=').map(decodeURIComponent))
+    );
+}
+
+function requireAuth(req, res, next) {
+    if (!DASHBOARD_PASSWORD) return next();
+    if (req.path === '/login' || req.path === '/api/login') return next();
+    const cookies = parseCookies(req.headers.cookie);
+    if (cookies.dbt === makeToken(DASHBOARD_PASSWORD)) return next();
+    res.redirect('/login');
+}
+
+const LOGIN_HTML = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Netflix Bot - Login</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; background: linear-gradient(135deg, #141414 0%, #1a0a0a 100%); color: #fff; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .card { background: rgba(42,42,42,0.9); border-radius: 12px; padding: 40px 36px; width: 100%; max-width: 360px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+    h1 { font-size: 1.4rem; margin-bottom: 8px; }
+    p { color: #808080; font-size: 0.85rem; margin-bottom: 28px; }
+    label { font-size: 0.8rem; color: #aaa; display: block; margin-bottom: 6px; }
+    input { width: 100%; padding: 10px 12px; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; color: #fff; font-size: 0.95rem; outline: none; margin-bottom: 20px; }
+    input:focus { border-color: #E50914; }
+    button { width: 100%; padding: 11px; background: #E50914; border: none; border-radius: 8px; color: #fff; font-size: 0.95rem; font-weight: 600; cursor: pointer; }
+    button:hover { background: #B81D24; }
+    .error { color: #e87c03; font-size: 0.82rem; margin-bottom: 14px; display: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🎬 Netflix Bot</h1>
+    <p>Ingresa la contraseña del dashboard</p>
+    <div class="error" id="err">Contraseña incorrecta</div>
+    <label>Contraseña</label>
+    <input type="password" id="pwd" autofocus />
+    <button onclick="login()">Entrar</button>
+  </div>
+  <script>
+    document.getElementById('pwd').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+    async function login() {
+      const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: document.getElementById('pwd').value }) });
+      if (res.ok) { window.location.href = '/'; }
+      else { document.getElementById('err').style.display = 'block'; }
+    }
+  </script>
+</body>
+</html>`;
 
 // Estado del bot (recibido del servicio principal)
 let botStatus = {
@@ -90,7 +151,15 @@ function broadcastToDashboard(type, data) {
 }
 
 // WebSocket para clientes del dashboard
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+    if (DASHBOARD_PASSWORD) {
+        const cookies = parseCookies(req.headers.cookie);
+        if (cookies.dbt !== makeToken(DASHBOARD_PASSWORD)) {
+            ws.close(1008, 'Unauthorized');
+            return;
+        }
+    }
+
     dashboardClients.add(ws);
 
     // Enviar estado inicial
@@ -105,7 +174,19 @@ wss.on('connection', (ws) => {
 });
 
 app.use(express.json());
+app.use(requireAuth);
 app.use(express.static(join(__dirname, '../dashboard/public')));
+
+// Login
+app.get('/login', (req, res) => res.send(LOGIN_HTML));
+
+app.post('/api/login', (req, res) => {
+    if (!DASHBOARD_PASSWORD) return res.json({ ok: true });
+    if (req.body.password !== DASHBOARD_PASSWORD) return res.status(401).json({ error: 'Contraseña incorrecta' });
+    const token = makeToken(DASHBOARD_PASSWORD);
+    res.setHeader('Set-Cookie', `dbt=${token}; HttpOnly; SameSite=Strict; Path=/`);
+    res.json({ ok: true });
+});
 
 // API: Obtener logs recientes
 app.get('/api/logs', (req, res) => {
