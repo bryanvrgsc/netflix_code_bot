@@ -31,16 +31,30 @@ const __dirname = dirname(__filename);
 const contactsPath = join(__dirname, '../contacts.json');
 let contacts = {};
 
-function loadContacts() {
+function loadContacts(exitOnError = true) {
     try {
         const data = fs.readFileSync(contactsPath, 'utf8');
         contacts = JSON.parse(data).profiles || {};
         console.log(chalk.cyan(`📇 Cargados ${Object.keys(contacts).length} contactos`));
     } catch (error) {
         console.error(chalk.red('❌ Error cargando contacts.json:'), error.message);
-        console.log(chalk.yellow('⚠️  Crea el archivo contacts.json con los perfiles de Netflix'));
-        process.exit(1);
+        if (exitOnError) {
+            console.log(chalk.yellow('⚠️  Crea el archivo contacts.json con los perfiles de Netflix'));
+            process.exit(1);
+        }
     }
+}
+
+function watchContacts() {
+    let debounce = null;
+    fs.watch(contactsPath, () => {
+        clearTimeout(debounce);
+        debounce = setTimeout(() => {
+            console.log(chalk.cyan('🔄 contacts.json modificado, recargando...'));
+            loadContacts(false);
+        }, 200);
+    });
+    console.log(chalk.gray('   Observando cambios en contacts.json...'));
 }
 
 // Banner de inicio
@@ -61,6 +75,7 @@ function showBanner() {
 async function main() {
     showBanner();
     loadContacts();
+    watchContacts();
 
     // Verificar variables de entorno
     if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
