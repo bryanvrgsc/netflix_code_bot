@@ -29,6 +29,9 @@ export class GmailService extends EventEmitter {
         // Heartbeat
         this._heartbeatInterval = null;
         this._heartbeatFrequency = 240000; // 4 minutes
+
+        // Concurrency guard
+        this._isCheckingEmails = false;
     }
 
     /**
@@ -165,6 +168,11 @@ export class GmailService extends EventEmitter {
      * Buscar correos de Netflix no leídos
      */
     async checkForNetflixEmails() {
+        if (this._isCheckingEmails) {
+            console.log('⏳ checkForNetflixEmails ya en ejecución, ignorando llamada concurrente');
+            return [];
+        }
+        this._isCheckingEmails = true;
         try {
             // Buscar correos de Netflix no leídos
             const messages = [];
@@ -210,6 +218,8 @@ export class GmailService extends EventEmitter {
         } catch (error) {
             console.error('Error buscando correos:', error.message);
             return [];
+        } finally {
+            this._isCheckingEmails = false;
         }
     }
 
