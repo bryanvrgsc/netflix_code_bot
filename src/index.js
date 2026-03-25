@@ -261,6 +261,11 @@ _Mensaje automático enviado por Netflix Code Bot_`;
                 notifyNewLog({ profile_name: data.profile, code: 'HOGAR_APROBADO', phone_number: phoneNumber, status: 'failed', timestamp: new Date().toISOString() });
                 notifyProcessing(null);
             }
+
+            // Screenshot de éxito ya no se necesita
+            if (approvalResult.screenshotPath) {
+                try { fs.unlink(approvalResult.screenshotPath, () => {}); } catch (e) {}
+            }
         } else {
             // Enviar alerta al admin con screenshot
             const adminPhone = process.env.ADMIN_PHONE;
@@ -275,6 +280,10 @@ _Mensaje automático enviado por Netflix Code Bot_`;
                 } catch (imgError) {
                     console.error(chalk.red('Error enviando screenshot al admin:'), imgError.message);
                 }
+            }
+
+            if (approvalResult.screenshotPath) {
+                try { fs.unlink(approvalResult.screenshotPath, () => {}); } catch (e) {}
             }
 
             // Registrar en log
