@@ -192,6 +192,9 @@ export class BrowserService {
 
             await page.close();
 
+            // Eliminar screenshot de debug (solo se usó internamente)
+            try { fs.unlinkSync(screenshotPath); } catch (e) {}
+
             return {
                 success: clicked || success,
                 message: clicked ? 'Solicitud de Hogar aprobada automáticamente' : (success ? 'Página indica éxito' : 'No se encontró botón de confirmación'),
